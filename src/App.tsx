@@ -10,14 +10,24 @@ import {
   buildHeatMapSeries,
   sampleHeatSeriesAtElapsedMs,
 } from "./domain/heatMap";
+import {
+  buildBiomechanicsSeries,
+  createDefaultBiomechanicsCalibration,
+  sampleBiomechanicsSeriesAtElapsedMs,
+} from "./domain/orientation";
 import { parseSensorCsv } from "./domain/sensorParser";
 import type {
+  BiomechanicsCalibration,
   HeatMapChannel,
   ParsedSession,
+  SegmentAxisMapping,
   SimulationMode,
+  SignedSensorAxis,
 } from "./domain/types";
 
 const PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
+const CALIBRATION_STORAGE_KEY = "knee-brace-biomechanics-calibrations-v1";
+const SIGNED_SENSOR_AXES = ["x", "-x", "y", "-y", "z", "-z"] as const;
 const DEFAULT_HEAT_CHANNELS = [
   "temperature",
   "emg",
@@ -40,6 +50,9 @@ export default function App() {
   const [selectedHeatChannels, setSelectedHeatChannels] = useState<
     HeatMapChannel[]
   >([...DEFAULT_HEAT_CHANNELS]);
+  const [calibrationsBySessionId, setCalibrationsBySessionId] = useState<
+    Record<string, BiomechanicsCalibration>
+  >(readStoredCalibrations);
   const [speed, setSpeed] = useState<number>(1);
   const [playbackMs, setPlaybackMs] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -59,6 +72,20 @@ export default function App() {
   const heatSample = useMemo(
     () => sampleHeatSeriesAtElapsedMs(heatSeries, playbackMs),
     [heatSeries, playbackMs],
+  );
+  const activeCalibration = useMemo(
+    () =>
+      calibrationsBySessionId[activeSession.id] ??
+      createDefaultBiomechanicsCalibration(activeSession),
+    [activeSession, calibrationsBySessionId],
+  );
+  const biomechanicsSeries = useMemo(
+    () => buildBiomechanicsSeries(activeSession, activeCalibration),
+    [activeCalibration, activeSession],
+  );
+  const biomechanicsSample = useMemo(
+    () => sampleBiomechanicsSeriesAtElapsedMs(biomechanicsSeries, playbackMs),
+    [biomechanicsSeries, playbackMs],
   );
 
   useEffect(() => {
@@ -85,6 +112,10 @@ export default function App() {
   useEffect(() => {
     setPlaybackMs((current) => Math.min(current, activeSession.durationMs));
   }, [activeSession.durationMs]);
+
+  useEffect(() => {
+    writeStoredCalibrations(calibrationsBySessionId);
+  }, [calibrationsBySessionId]);
 
   useEffect(() => {
     if (!isPlaying || activeSession.durationMs <= 0) {
@@ -148,6 +179,27 @@ export default function App() {
     });
   };
 
+  const handleCalibrationChange = (calibration: BiomechanicsCalibration) => {
+    setCalibrationsBySessionId((current) => ({
+      ...current,
+      [activeSession.id]: calibration,
+    }));
+  };
+
+  const handleSetNeutralPose = () => {
+    handleCalibrationChange({
+      ...activeCalibration,
+      neutralElapsedMs: Math.min(playbackMs, activeSession.durationMs),
+    });
+  };
+
+  const handleResetCalibration = () => {
+    setCalibrationsBySessionId((current) => {
+      const { [activeSession.id]: _removed, ...remaining } = current;
+      return remaining;
+    });
+  };
+
   if (page === "eeg2d") {
     return (
       <TimeSeriesGraphsPage
@@ -169,6 +221,7 @@ export default function App() {
         }
       >
         <SensorScene
+          biomechanicsSample={biomechanicsSample}
           heatSample={heatSample}
           isPlaying={isPlaying}
           selectedHeatChannels={selectedHeatChannels}
@@ -193,7 +246,7 @@ export default function App() {
           <div className="status-chip">
             <Activity aria-hidden="true" size={16} />
             <span>
-              {Math.round(heatSample.motionIntensity).toLocaleString()} IMU
+              {biomechanicsSample.kneeFlexionDeg.toFixed(0)} deg flexion
             </span>
           </div>
         </div>
@@ -201,9 +254,14 @@ export default function App() {
 
       <ControlOverlay
         activeSession={activeSession}
+        biomechanicsCalibration={activeCalibration}
+        biomechanicsWarnings={biomechanicsSample.warnings}
         mode={mode}
+        onBiomechanicsCalibrationChange={handleCalibrationChange}
         onModeChange={setMode}
+        onResetBiomechanicsCalibration={handleResetCalibration}
         onSelectSession={setSelectedSessionId}
+        onSetNeutralPose={handleSetNeutralPose}
         onSpeedChange={setSpeed}
         onToggleHeatChannel={handleToggleHeatChannel}
         onUpload={handleUpload}
@@ -253,5 +311,91 @@ export default function App() {
         />
       </label>
     </main>
+  );
+}
+
+function readStoredCalibrations(): Record<string, BiomechanicsCalibration> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const raw = window.localStorage.getItem(CALIBRATION_STORAGE_KEY);
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!isCalibrationMap(parsed)) {
+      return {};
+    }
+
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredCalibrations(
+  calibrations: Record<string, BiomechanicsCalibration>,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    CALIBRATION_STORAGE_KEY,
+    JSON.stringify(calibrations),
+  );
+}
+
+function isCalibrationMap(
+  value: unknown,
+): value is Record<string, BiomechanicsCalibration> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(isBiomechanicsCalibration);
+}
+
+function isBiomechanicsCalibration(
+  value: unknown,
+): value is BiomechanicsCalibration {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<BiomechanicsCalibration>;
+
+  return (
+    typeof candidate.neutralElapsedMs === "number" &&
+    Number.isFinite(candidate.neutralElapsedMs) &&
+    isAxisMapping(candidate.thigh) &&
+    isAxisMapping(candidate.calf) &&
+    (candidate.gyroUnits === "deg/s" || candidate.gyroUnits === "rad/s")
+  );
+}
+
+function isAxisMapping(value: unknown): value is SegmentAxisMapping {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<SegmentAxisMapping>;
+
+  return (
+    isSignedSensorAxis(candidate.segmentX) &&
+    isSignedSensorAxis(candidate.segmentY) &&
+    isSignedSensorAxis(candidate.segmentZ)
+  );
+}
+
+function isSignedSensorAxis(value: unknown): value is SignedSensorAxis {
+  return (
+    typeof value === "string" &&
+    SIGNED_SENSOR_AXES.includes(value as SignedSensorAxis)
   );
 }

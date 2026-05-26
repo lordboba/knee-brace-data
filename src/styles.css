@@ -157,7 +157,9 @@ input[type="range"] {
   position: absolute;
   top: 138px;
   right: 24px;
-  width: min(350px, calc(100vw - 48px));
+  width: min(380px, calc(100vw - 48px));
+  max-height: calc(100dvh - 228px);
+  overflow: auto;
   padding: 16px;
   border-radius: 8px;
 }
@@ -228,7 +230,8 @@ input[type="range"] {
   font-size: 0.78rem;
 }
 
-.collapse-source-button {
+.collapse-source-button,
+.mini-icon-button {
   display: grid;
   place-items: center;
   width: 32px;
@@ -244,12 +247,14 @@ input[type="range"] {
     background-color 180ms ease;
 }
 
-.collapse-source-button:hover {
+.collapse-source-button:hover,
+.mini-icon-button:hover {
   border-color: rgba(226, 232, 240, 0.28);
   background: rgba(255, 255, 255, 0.1);
 }
 
-.collapse-source-button:active {
+.collapse-source-button:active,
+.mini-icon-button:active {
   transform: translateY(1px);
 }
 
@@ -329,6 +334,7 @@ input[type="range"] {
   color: #111827;
 }
 
+.calibration-field,
 .heat-channel-field {
   display: grid;
   gap: 8px;
@@ -337,11 +343,95 @@ input[type="range"] {
   border: 0;
 }
 
+.calibration-field legend,
 .heat-channel-field legend {
   padding: 0;
   color: #b2c0c7;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.neutral-pose-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 0 0 10px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #dce4e8;
+  font-size: 0.76rem;
+}
+
+.neutral-pose-row > div {
+  display: inline-flex;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.axis-mapping-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.axis-mapping-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.axis-mapping-card strong {
+  color: #eef4f6;
+  font-size: 0.74rem;
+}
+
+.axis-field {
+  display: grid;
+  grid-template-columns: 1fr 58px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #b2c0c7;
+  font-size: 0.7rem;
+}
+
+.axis-field select {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f8fa;
+  padding: 0 5px;
+  font-size: 0.72rem;
+}
+
+.axis-field option {
+  color: #111827;
+}
+
+.calibration-warning-list {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  color: #ffdf9a;
+  font-size: 0.72rem;
+  list-style: none;
+}
+
+.calibration-warning-list li {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: start;
+  gap: 6px;
 }
 
 .heat-channel-list {
@@ -752,6 +842,10 @@ input[type="range"] {
     align-items: flex-start;
   }
 
+  .control-header-actions span {
+    display: none;
+  }
+
   .page-switch-button {
     min-width: 42px;
     padding: 0 10px;
@@ -771,6 +865,7 @@ input[type="range"] {
     bottom: 146px;
     left: 16px;
     width: auto;
+    max-height: 52dvh;
   }
 
   .intensity-legend {

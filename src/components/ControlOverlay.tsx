@@ -1,16 +1,23 @@
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Crosshair,
   Database,
   Gauge,
+  RotateCcw,
   SlidersHorizontal,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
 import type {
+  BiomechanicsCalibration,
+  BiomechanicsWarning,
   HeatMapChannel,
   ParsedSession,
+  SegmentAxisMapping,
   SimulationMode,
+  SignedSensorAxis,
 } from "../domain/types";
 import { formatElapsedTime } from "./time";
 
@@ -40,11 +47,44 @@ const HEAT_CHANNEL_OPTIONS = [
   swatchClassName: string;
 }[];
 
+const SIGNED_AXIS_OPTIONS = ["x", "-x", "y", "-y", "z", "-z"] as const satisfies
+  readonly SignedSensorAxis[];
+
+const SEGMENT_AXIS_OPTIONS = [
+  { key: "segmentX", label: "Segment X" },
+  { key: "segmentY", label: "Segment Y" },
+  { key: "segmentZ", label: "Segment Z" },
+] as const satisfies readonly {
+  key: keyof SegmentAxisMapping;
+  label: string;
+}[];
+
+const CALIBRATION_WARNING_LABELS: Record<BiomechanicsWarning, string> = {
+  "duplicate-thigh-axis": "Thigh mapping repeats a sensor axis.",
+  "duplicate-calf-axis": "Calf mapping repeats a sensor axis.",
+  "neutral-frame-out-of-range": "Neutral pose is outside this session.",
+  "imu1-accelerometer-saturated": "IMU 1 accelerometer includes saturated samples.",
+  "imu2-accelerometer-saturated": "IMU 2 accelerometer includes saturated samples.",
+  "imu1-gravity-magnitude-out-of-range":
+    "IMU 1 neutral gravity magnitude is outside the expected range.",
+  "imu2-gravity-magnitude-out-of-range":
+    "IMU 2 neutral gravity magnitude is outside the expected range.",
+  "yaw-drift-unobservable":
+    "Yaw drift cannot be observed without a magnetometer.",
+};
+
 type ControlOverlayProps = {
   activeSession: ParsedSession;
+  biomechanicsCalibration: BiomechanicsCalibration;
+  biomechanicsWarnings: readonly BiomechanicsWarning[];
   mode: SimulationMode;
+  onBiomechanicsCalibrationChange: (
+    calibration: BiomechanicsCalibration,
+  ) => void;
   onModeChange: (mode: SimulationMode) => void;
+  onResetBiomechanicsCalibration: () => void;
   onSelectSession: (sessionId: string) => void;
+  onSetNeutralPose: () => void;
   onSpeedChange: (speed: number) => void;
   onToggleHeatChannel: (channel: HeatMapChannel) => void;
   onUpload: (file: File) => Promise<void>;
@@ -58,9 +98,14 @@ type ControlOverlayProps = {
 
 export function ControlOverlay({
   activeSession,
+  biomechanicsCalibration,
+  biomechanicsWarnings,
   mode,
+  onBiomechanicsCalibrationChange,
   onModeChange,
+  onResetBiomechanicsCalibration,
   onSelectSession,
+  onSetNeutralPose,
   onSpeedChange,
   onToggleHeatChannel,
   onUpload,
@@ -73,6 +118,19 @@ export function ControlOverlay({
 }: ControlOverlayProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const controlsId = "source-panel-controls";
+  const updateSegmentAxis = (
+    segment: "thigh" | "calf",
+    axis: keyof SegmentAxisMapping,
+    value: SignedSensorAxis,
+  ) => {
+    onBiomechanicsCalibrationChange({
+      ...biomechanicsCalibration,
+      [segment]: {
+        ...biomechanicsCalibration[segment],
+        [axis]: value,
+      },
+    });
+  };
 
   return (
     <aside
@@ -166,9 +224,64 @@ export function ControlOverlay({
             </select>
           </label>
 
+          <fieldset className="calibration-field">
+            <legend>Biomechanics calibration</legend>
+            <div className="neutral-pose-row">
+              <span>
+                Neutral pose {formatElapsedTime(biomechanicsCalibration.neutralElapsedMs)}
+              </span>
+              <div>
+                <button
+                  aria-label="Set neutral pose to current frame"
+                  className="mini-icon-button"
+                  type="button"
+                  onClick={onSetNeutralPose}
+                >
+                  <Crosshair aria-hidden="true" size={16} />
+                </button>
+                <button
+                  aria-label="Reset biomechanics calibration"
+                  className="mini-icon-button"
+                  type="button"
+                  onClick={onResetBiomechanicsCalibration}
+                >
+                  <RotateCcw aria-hidden="true" size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="axis-mapping-grid">
+              <SegmentAxisControls
+                label="Thigh IMU 1"
+                mapping={biomechanicsCalibration.thigh}
+                onChange={(axis, value) =>
+                  updateSegmentAxis("thigh", axis, value)
+                }
+              />
+              <SegmentAxisControls
+                label="Calf IMU 2"
+                mapping={biomechanicsCalibration.calf}
+                onChange={(axis, value) =>
+                  updateSegmentAxis("calf", axis, value)
+                }
+              />
+            </div>
+
+            {biomechanicsWarnings.length > 0 ? (
+              <ul className="calibration-warning-list">
+                {biomechanicsWarnings.map((warning) => (
+                  <li key={warning}>
+                    <AlertTriangle aria-hidden="true" size={14} />
+                    <span>{CALIBRATION_WARNING_LABELS[warning]}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </fieldset>
+
           <fieldset className="heat-channel-field">
-            <legend>Heat map</legend>
-            <div className="heat-channel-list" aria-label="Heat map channels">
+            <legend>Sensor layers</legend>
+            <div className="heat-channel-list" aria-label="Sensor layer toggles">
               {HEAT_CHANNEL_OPTIONS.map((option) => {
                 const isSelected = selectedHeatChannels.includes(option.value);
 
@@ -193,15 +306,15 @@ export function ControlOverlay({
             </div>
           </fieldset>
 
-          <div className="rgb-legend" aria-label="RGB heat map legend">
+          <div className="rgb-legend" aria-label="Sensor layer legend">
             <span>
-              <i className="legend-red" />R temp
+              <i className="legend-red" />Skin temp
             </span>
             <span>
-              <i className="legend-green" />G EMG
+              <i className="legend-green" />EMG pulse
             </span>
             <span>
-              <i className="legend-blue" />B IMU
+              <i className="legend-blue" />IMU axes
             </span>
           </div>
 
@@ -225,5 +338,39 @@ export function ControlOverlay({
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function SegmentAxisControls({
+  label,
+  mapping,
+  onChange,
+}: {
+  label: string;
+  mapping: SegmentAxisMapping;
+  onChange: (axis: keyof SegmentAxisMapping, value: SignedSensorAxis) => void;
+}) {
+  return (
+    <div className="axis-mapping-card">
+      <strong>{label}</strong>
+      {SEGMENT_AXIS_OPTIONS.map((option) => (
+        <label className="axis-field" key={option.key}>
+          <span>{option.label}</span>
+          <select
+            aria-label={`${label} ${option.label}`}
+            value={mapping[option.key]}
+            onChange={(event) =>
+              onChange(option.key, event.target.value as SignedSensorAxis)
+            }
+          >
+            {SIGNED_AXIS_OPTIONS.map((axis) => (
+              <option key={axis} value={axis}>
+                {axis}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+    </div>
   );
 }

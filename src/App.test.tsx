@@ -5,13 +5,17 @@ import App from "./App";
 
 vi.mock("./components/SensorScene", () => ({
   SensorScene: ({
+    biomechanicsSample,
     children,
     selectedHeatChannels,
   }: {
+    biomechanicsSample?: { kneeFlexionDeg: number; warnings: readonly string[] };
     children?: ReactNode;
     selectedHeatChannels?: readonly string[];
   }) => (
     <div
+      data-biomechanics-warnings={biomechanicsSample?.warnings.join(",") ?? "missing"}
+      data-knee-flexion={biomechanicsSample?.kneeFlexionDeg.toFixed(1) ?? "missing"}
       data-selected-heat-channels={selectedHeatChannels?.join(",") ?? "missing"}
       data-testid="sensor-canvas"
     >
@@ -26,9 +30,9 @@ describe("App", () => {
 
     expect(screen.getByText("Knee Brace Sensor Simulator")).toBeInTheDocument();
     expect(await screen.findByTestId("sensor-canvas")).toBeInTheDocument();
-    expect(screen.getByText("R temp")).toBeInTheDocument();
-    expect(screen.getByText("G EMG")).toBeInTheDocument();
-    expect(screen.getByText("B IMU")).toBeInTheDocument();
+    expect(screen.getByText("Skin temp")).toBeInTheDocument();
+    expect(screen.getByText("EMG pulse")).toBeInTheDocument();
+    expect(screen.getByText("IMU axes")).toBeInTheDocument();
     expect(screen.getByLabelText("Intensity legend")).toBeInTheDocument();
     expect(screen.getByText("High")).toBeInTheDocument();
     expect(screen.getByText("Low")).toBeInTheDocument();
@@ -122,6 +126,23 @@ describe("App", () => {
     expect(temperature).toBeChecked();
     expect(emg).not.toBeChecked();
     expect(imu).toBeChecked();
+  });
+
+  it("wires biomechanical calibration data into the controls and 3D scene", async () => {
+    render(<App />);
+
+    const canvas = await screen.findByTestId("sensor-canvas");
+
+    expect(canvas).not.toHaveAttribute("data-knee-flexion", "missing");
+    expect(canvas).toHaveAttribute(
+      "data-biomechanics-warnings",
+      expect.stringContaining("yaw-drift-unobservable"),
+    );
+    expect(screen.getByText("Biomechanics calibration")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /set neutral pose to current frame/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/yaw drift/i)).toBeInTheDocument();
   });
 
   it("opens the 2D data page with preloaded checked-in sensor graphs", async () => {
