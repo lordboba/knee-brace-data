@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.playwright-mcp/
+*.tsbuildinfo
+knee-brace-simulator-*.png
+knee-brace-scrub-*.png
+.DS_Store
