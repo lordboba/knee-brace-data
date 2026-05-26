@@ -5,3 +5,4 @@ dist/
 knee-brace-simulator-*.png
 knee-brace-scrub-*.png
 .DS_Store
+.vercel
